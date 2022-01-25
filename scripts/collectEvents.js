@@ -1,4 +1,5 @@
 const hre = require("hardhat");
+const fs = require("fs");
 const abi_crss = require("../_supporting/abi_crss.json");
 var theOwner, Alice, Bob, Charlie;
 var DECIMALS;
@@ -10,32 +11,32 @@ const zero_address = "0x0000000000000000000000000000000000000000";
 function weiToEthEn(wei) { return Number(ethers.utils.formatUnits(wei.toString(), DECIMALS)).toLocaleString('en') }
 function weiToEth(wei) { return Number(ethers.utils.formatUnits(wei.toString(), DECIMALS)) }
 function ethToWei(eth) { return ethers.utils.parseUnits(eth.toString(), DECIMALS); }
-function uiAddr(address) { return "{0x" + address.substring(2, 6).concat('...') + "}" ; }
-async function myExpectRevert(promise, revert_string) { 
-	await promise.then(()=>expect(true).to.equal(false))
-	.catch((err)=>{
-		if( ! err.toString().includes(revert_string) )	{
-			expect(true).to.equal(false);
-		}
-	})
+function uiAddr(address) { return "{0x" + address.substring(2, 6).concat('...') + "}"; }
+async function myExpectRevert(promise, revert_string) {
+	await promise.then(() => expect(true).to.equal(false))
+		.catch((err) => {
+			if (!err.toString().includes(revert_string)) {
+				expect(true).to.equal(false);
+			}
+		})
 };
 function findEvent(receipt, eventName, args) {
 	var event;
-	for(let i = 0; i < receipt.events.length; i++) {
-		if(receipt.events[i].event == eventName) {
+	for (let i = 0; i < receipt.events.length; i++) {
+		if (receipt.events[i].event == eventName) {
 			event = receipt.events[i];
 			break;
 		}
 	}
 	let matching;
-	if(event != undefined) {
+	if (event != undefined) {
 		matching = true;
-		for(let i = 0; i < Object.keys(args).length; i++) {
+		for (let i = 0; i < Object.keys(args).length; i++) {
 			let arg = Object.keys(args)[i];
-			if(event.args[arg] != undefined && parseInt(event.args[arg]) != parseInt(args[arg])) {
+			if (event.args[arg] != undefined && parseInt(event.args[arg]) != parseInt(args[arg])) {
 				matching = false;
 				break;
-			} else if( event.args[0][arg] != undefined && parseInt(event.args[0][arg]) != parseInt(args[arg]) ) {
+			} else if (event.args[0][arg] != undefined && parseInt(event.args[0][arg]) != parseInt(args[arg])) {
 				matching = false;
 				break;
 			}
@@ -47,16 +48,16 @@ function findEvent(receipt, eventName, args) {
 }
 function retrieveEvent(receipt, eventName) {
 	var event;
-	for(let i = 0; i < receipt.events.length; i++) {
-		if(receipt.events[i].event == eventName) {
+	for (let i = 0; i < receipt.events.length; i++) {
+		if (receipt.events[i].event == eventName) {
 			event = receipt.events[i];
 			break;
 		}
 	}
 	var args;
-	if(event != undefined) {
-		if(Array.isArray(event.args)) {
-			if(Array.isArray(event.args[0])) {
+	if (event != undefined) {
+		if (Array.isArray(event.args)) {
+			if (Array.isArray(event.args[0])) {
 				args = event.args[0];
 			} else {
 				args = event.args;
@@ -68,36 +69,55 @@ function retrieveEvent(receipt, eventName) {
 	return args;
 }
 
+async function getTransferHistory(tokenName, tokenAddress, abi, owner) {
+	token = new ethers.Contract(tokenAddress, abi, owner);
+
+	DECIMALS = await token.decimals();
+	let total = await token.totalSupply();
+	console.log("\tCRSS.decimals = %s, CRSS.totalSupply = %s wei".yellow, DECIMALS, total);
+
+	let transferFilter = token.filters.Transfer(null, null);
+	let transferEvents;
+
+	let bn_prev = 14278000, delta = 1000;
+	let total = 0;
+
+	for (bn = 14278000 + delta - 1; bn <= 14674000; bn += delta) {
+		transferEvents = await token.queryFilter(transferFilter, bn_prev, bn); // 13280670, 14671200
+		console.log("\t------------------[%s, %s]: %s", bn_prev, bn, transferEvents.length);
+		// bn -= delta
+		bn_prev = bn + 1;
+		if (transferEvents.length === 0) continue;
+		total += transferEvents.length;
+
+		const path = `./events/${tokenName}.txt`;
+		const dataToSave = `\nFrom ${bn_prev} To ${bn}\n${JSON.stringify(transferEvents)}`
+		if (fs.existsSync(path)) {
+			const readData = fs.readFileSync(path, 'utf-8');
+
+			// Check if data already saved has current trasfer events
+			if (readData.indexOf(`From ${bn_prev} To ${bn}`) < 0) {
+				fs.appendFileSync(path, dataToSave, 'utf-8');
+			}
+		} else {
+			fs.writeFileSync(path, dataToSave, 'utf-8');
+		}
+	}
+
+	fs.appendFileSync(path, `\nTotal Counts: ${total}`, 'utf-8');
+}
+
 async function main() {
 
-    [theOwner, Alice, Bob, Charlie] = await ethers.getSigners();
-    //console.log("\ttheOwner's address = %s, balance = %s FTM.", uiAddr(addr = await theOwner.getAddress()), weiToEthEn(await ethers.provider.getBalance(addr)) );
-    //console.log("\tAlice's address = %s, balance = %s FTM.", uiAddr(addr = await Alice.getAddress()), weiToEthEn(await ethers.provider.getBalance(addr)) );
-    //console.log("\tBob's address = %s, balance = %s FTM.", uiAddr(addr = await Bob.getAddress()), weiToEthEn(await ethers.provider.getBalance(addr)) );
-    //console.log("\tCharlie's address = %s, balance = %s FTM.", uiAddr(addr = await Charlie.getAddress()), weiToEthEn(await ethers.provider.getBalance(addr)) );
+	[theOwner, Alice, Bob, Charlie] = await ethers.getSigners();
 
-    CRSSToken = new ethers.Contract(process.env.CRSSV11,  abi_crss, theOwner);
-
-    DECIMALS = await CRSSToken.decimals();
-    var total = await CRSSToken.totalSupply();
-    console.log("\tCRSS.decimals = %s, CRSS.totalSupply = %s wei".yellow, DECIMALS, total);
-
-    var transferFilter = CRSSToken.filters.Transfer(null, null);
-    var events;
-
-    var bn_prev = 13280000, delta = 1000;
-    for(bn = 13280000 + delta-1; bn <= 14671200; bn += delta) {
-        var transferEvents = await CRSSToken.queryFilter(transferFilter, bn_prev, bn); // 13280670, 14671200
-        console.log("\t------------------[%s, %s]: %s", bn_prev, bn, transferEvents.length);
-        bn_prev = bn + 1;
-
-    }
+	getTransferHistory("CRSS", process.env.CRSSV11, abi_crss, theOwner);
 
 }
 
 // We recommend this pattern to be able to use async/await everywhere
 // and properly handle errors.
 main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
+	console.error(error);
+	process.exitCode = 1;
 });
