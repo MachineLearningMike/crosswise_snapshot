@@ -115,9 +115,24 @@ async function main() {
 
 }
 
+
+var userAccounts;
+async function replayEvents(events) {
+
+	const TransferEmulator = await ethers.getContractFactory("TransferEmulator", theOwner);
+	//hertzToken = await Hertz.deploy("Hertz substitute Token", "HTZ", 1e33, theOwner.address);
+	transferEmulator = await TransferEmulator.deploy();
+	await transferEmulator.deployed();
+	var totalSupply = await transferEmulator.totalSupply();
+	console.log("\ttransferEmulator was deployed with initial total supply: %s uints", weiToEthEn(totalSupply));
+	console.log("\ttransferEmulator deployed at: %s", hertzToken.address);
+
+}
+
 // We recommend this pattern to be able to use async/await everywhere
 // and properly handle errors.
 main().catch((error) => {
 	console.error(error);
 	process.exitCode = 1;
 });
+
