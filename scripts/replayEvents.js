@@ -45,7 +45,7 @@ async function main() {
 
     [theOwner, Alice, Bob, Charlie] = await ethers.getSigners();
 
-    filename = "./_supporting/CRSSV11.txt";
+    filename = "./_snapshot/CRSSV11.txt";
     var transferEvents = getArrayOfArraysFromText(filename);
     console.log("length = %s".yellow, transferEvents.length, transferEvents[2]);
 
@@ -54,7 +54,7 @@ async function main() {
     [preAttackBalances, attackBalances, postAttackBalances, attackTransfers] 
     = await replayTransferEvents(18, transferEvents, INITIAL_SUPPLY, theOwner);
 
-    writeTransfersToExcel(attackTransfers, "./_supporting/CRSSV11_attack_transfers.csv");
+    writeTransfersToExcel(attackTransfers, "./_snapshot/CRSSV11_attack_transfers.csv");
 }
 
 function getArrayOfArraysFromText(filename) {
@@ -89,7 +89,7 @@ async function replayTransferEvents(decimals, transferEvents, initialSupply, own
 
         if(transferEvents[index].transactionHash == attackTxHash ) {
             if (state != 'inAttack') { // pre-attack finished.
-                preAttackBalances = takeSnapshot(preAttackAccounts, "./_supporting/CRSSV11_ending_preAttack.csv");
+                preAttackBalances = takeSnapshot(preAttackAccounts, "./_snapshot/CRSSV11_ending_preAttack.csv");
             }
             state = 'inAttack';
             if( ! attackAccounts.includes(sender) ) attackAccounts.push(sender);
@@ -97,7 +97,7 @@ async function replayTransferEvents(decimals, transferEvents, initialSupply, own
             attackTransfers.push([sender, recipient, amount]);
 
         } else if (state == 'inAttack') { // attack finished.
-            attackBalances = takeSnapshot(attackAccounts, "./_supporting/CRSSV11_ending_attack.csv");
+            attackBalances = takeSnapshot(attackAccounts, "./_snapshot/CRSSV11_ending_attack.csv");
             state = 'postAttack';
 
         } else if (state == 'preAttack') { // preAttack
@@ -115,7 +115,7 @@ async function replayTransferEvents(decimals, transferEvents, initialSupply, own
         await tx.wait();
     }
 
-    postAttackBalances = takeSnapshot(postAttackAccounts, "./_supporting/CRSSV11_ending_postAttack.csv");
+    postAttackBalances = takeSnapshot(postAttackAccounts, "./_snapshot/CRSSV11_ending_postAttack.csv");
 
 
 
