@@ -53,8 +53,20 @@ async function main() {
     var preAttackBalances, attackBalances, postAttackBalances, attackTransfers
     [preAttackBalances, attackBalances, postAttackBalances, attackTransfers] 
     = await replayTransferEvents(18, transferEvents, INITIAL_SUPPLY, theOwner);
+    
+    console.log("================== preAttackBalances %s, attackBalances %s, postAttackBlances %s attackTransfers %s".yellow,
+    preAttackBalances.length, attackBalances.length, postAttackBalances.length, attackTransfers.length);
 
     writeTransfersToExcel(attackTransfers, "./_snapshot/CRSSV11_attack_transfers.csv");
+
+    var attackChanges = findBalancesChange(preAttackBalances, attackBalances);
+    writeBalancesToExcel(attackChanges, "./_snapshot/CRSSV11_attack_changes.csv");
+
+    var union = unionBalances(preAttackBalances, attackBalances);
+    var postAttackChanges = findBalancesChange(postAttackBalances, union);
+    writeBalancesToExcel(postAttackChanges, "./_snapshot/CRSSV11_postAttack_changes.csv");
+
+    console.log("================== Finished ===================".yellow);
 }
 
 function getArrayOfArraysFromText(filename) {
@@ -72,28 +84,40 @@ async function replayTransferEvents(decimals, transferEvents, initialSupply, own
     const TransferEmulator = await ethers.getContractFactory("TransferEmulator", theOwner);
     transferEmulator = await TransferEmulator.deploy("NoName", "NoSymbol", decimals, BigInt(initialSupply), owner.address);
     var _decimals = await transferEmulator.decimals();
+    library.DECIMALS = _decimals;
     var totalSupply = await transferEmulator.totalSupply();
     console.log("\ttransferEmulator was deployed with initial total supply: %s ETH, decimals: %s".yellow, library.weiToEthEn(totalSupply), _decimals);
     console.log("\ttransferEmulator deployed at: %s".yellow, transferEmulator.address);
 
     var preAttackAccounts = [], attackAccounts = [], postAttackAccounts = [];
-    var preAttackBalances, attackBalances, postAttackBalances;
+    var preAttackBalances = [], attackBalances = [], postAttackBalances = [];
     var attackTransfers = [];
 
     var state = 'preAttack';
-    for(index = 0; index < transferEvents.length; index ++) {
-    //for(index = 0; index < 100; index ++) {
-        var sender = transferEvents[index].args[0];
-        var recipient = transferEvents[index].args[1];
-        var amount = transferEvents[index].args[2];
+    for(var n = 0; n < transferEvents.length; n ++) {
+    //for(var n = 0; n < 100; n ++) {
+        var sender = transferEvents[n].args[0];
+        var recipient = transferEvents[n].args[1];
+        var amount = transferEvents[n].args[2];
+        var txhash = transferEvents[n].transactionHash;
 
-        if(transferEvents[index].transactionHash == attackTxHash ) {
-            if (state != 'inAttack') { // pre-attack finished.
+        if(state == 'inAttack') {
+            console.log("inAttack hash", transferEvents[n].transactionHash, n);
+        }
+
+        if(transferEvents[n].transactionHash == attackTxHash ) {
+            if (state != 'inAttack') { // preAttack finished.
                 preAttackBalances = takeSnapshot(preAttackAccounts, "./_snapshot/CRSSV11_ending_preAttack.csv");
             }
             state = 'inAttack';
-            if( ! attackAccounts.includes(sender) ) attackAccounts.push(sender);
-            if( ! attackAccounts.includes(recipient) ) attackAccounts.push(recipient);
+            if( ! attackAccounts.includes(sender) ) { 
+                attackAccounts.push(sender);
+                console.log("inAttack s", sender);
+            }
+            if( ! attackAccounts.includes(recipient) ) { 
+                attackAccounts.push(recipient); 
+                console.log("inAttack r", recipient);
+            }
             attackTransfers.push([sender, recipient, amount]);
 
         } else if (state == 'inAttack') { // attack finished.
@@ -109,15 +133,18 @@ async function replayTransferEvents(decimals, transferEvents, initialSupply, own
             if( ! postAttackAccounts.includes(recipient) ) postAttackAccounts.push(recipient);
         }
 
-        console.log(sender, recipient, state);
+        console.log(sender, recipient, state, txhash, n);
 
-        var tx = await transferEmulator.transferPassive(sender, recipient, amount);
-        await tx.wait();
+        if( n < transferEvents.length - 1 ) { //------------------------------------------------------ i give up.
+            var tx = await transferEmulator.transferPassive(sender, recipient, amount);
+            await tx.wait();
+        }
     }
 
+    var tx = await transferEmulator.transferPassive(zero_address, zero_address, BigInt(0));
+    await tx.wait();
+
     postAttackBalances = takeSnapshot(postAttackAccounts, "./_snapshot/CRSSV11_ending_postAttack.csv");
-
-
 
     return [preAttackBalances, attackBalances, postAttackBalances, attackTransfers];
 }
@@ -125,17 +152,56 @@ async function replayTransferEvents(decimals, transferEvents, initialSupply, own
 async function takeSnapshot(accounts, filename) {
     var balances = await readBalances(accounts);
     writeBalancesToExcel(balances, filename);
+    console.log("takeSnapshot. balances %s, filename %s".yellow, balances.length, filename);
     return balances;
 }
 
 async function readBalances(userAccounts) {
     var balances = [];
-    for(index = 0; index < userAccounts.length; index ++ ) {
-        var account = userAccounts[index];
+    for(var n = 0; n < userAccounts.length; n ++ ) {
+        var account = userAccounts[n];
         var balance = await transferEmulator.balanceOf(account);
         balances.push( [account, balance] );
     }
     return balances;
+}
+
+function findBalancesChange(balances0, balances1) {
+    var changes = [];
+    for(var n = 0; n < balances1.length; n ++ ) {
+        var balance = balances1[n];
+        var account = balance[0];
+        var amount1 = balance[1];
+        var amount0 = 0;
+        for(var k = 0; k < balances0.length; k ++ ) {
+            if(balances0[k][0] == account) {
+                amount0 = balances0[k][1];
+                break;
+            }
+        }
+        changes.push( [account, amount1 - amount0] );
+    }
+    return changes;
+}
+
+function unionBalances(balances0, balances1) {
+    for( var n = 0; n < balances1.length; n ++ ) {
+        var balance = balances1[n];
+        var account = balance[0];
+        var amount1 = balance[1];
+        var found = false
+        for(var k = 0; k < balances0.length; k ++ ) {
+            if(balances0[k][0] == account) {
+                balances0[k][1] = balances0[k][1] + amount1;
+                found = true;
+                break;
+            }
+        }
+        if (! found) {
+            balances0.push([account, amount1]);
+        }
+    }
+    return balances0;
 }
 
 function writeBalancesToExcel(balances, filename) {
