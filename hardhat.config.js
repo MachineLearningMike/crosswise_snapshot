@@ -13,7 +13,7 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
 	const accounts = await hre.ethers.getSigners();
 
 	for (const account of accounts) {
-		console.log("accounts",account.address);
+		console.log("accounts", account.address);
 	}
 });
 
@@ -27,8 +27,8 @@ module.exports = {
 			gasPrice: "auto",
 			gasMultiplier: 2
 		},
-		localnet : {	// Ganache etc.
-			url: "http://127.0.0.1:8545", 
+		localnet: {	// Ganache etc.
+			url: "http://127.0.0.1:8545",
 			gasPrice: "auto",
 			gasMultiplier: 2
 		},
@@ -50,7 +50,7 @@ module.exports = {
 				process.env.Test_Private_Key_Charlie,
 			],
 		},
-		bscmainnet :{
+		bscmainnet: {
 			url: "https://bsc-dataseed2.defibit.io/",
 			accounts: [
 				process.env.MyTestPrivateKey,
@@ -59,7 +59,7 @@ module.exports = {
 				process.env.Test_Private_Key_Charlie,
 			],
 		},
-		bsctestnet :{
+		bsctestnet: {
 			url: "https://data-seed-prebsc-1-s1.binance.org:8545/", //"http://185.25.48.34/api/v10/rpc/bsc-test",
 			accounts: [
 				process.env.MyTestPrivateKey,
@@ -68,7 +68,7 @@ module.exports = {
 				process.env.Test_Private_Key_Charlie,
 			],
 		},
-		fantomtestnet :{
+		fantomtestnet: {
 			url: "https://rpc.testnet.fantom.network",
 			accounts: [
 				process.env.MyTestPrivateKey,
@@ -90,6 +90,15 @@ module.exports = {
 		compilers: [
 			{
 				version: "0.6.12",
+				settings: {
+					optimizer: {
+						enabled: true,
+						runs: 2,
+					},
+				}
+			},
+			{
+				version: "0.6.6",
 				settings: {
 					optimizer: {
 						enabled: true,
